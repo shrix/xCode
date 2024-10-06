@@ -1,1 +1,1 @@
-python extract_tg_info.py
+python tg_info.py
