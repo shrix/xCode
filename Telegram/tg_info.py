@@ -19,55 +19,6 @@ api_id = int(os.environ["TELEGRAM_API_ID"])
 api_hash = os.environ["TELEGRAM_API_HASH"]
 
 
-# Function to validate content type
-def validate_content_type(input_type):
-    valid_types = {
-        "l": "link",
-        "t": "text",
-        "i": "image",
-        "v": "video"
-    }
-    return valid_types.get(input_type.lower())
-
-
-# Function to extract specified content from message text
-async def extract_content(message, content_type):
-    try:
-        date = message.date.strftime("[%y%m%d]")
-        sender = message.sender.first_name if message.sender else "Unknown"
-        
-        if content_type == "link" and message.text:
-            links = re.findall(r'(https?://[^\s]+)', message.text)
-            return [f"{date} {sender}: {link}" for link in links]
-        elif content_type == "text" and message.text:
-            text = message.text[:MAX_CHARS]
-            return [f"{date} {sender}: {text}" if len(message.text) <= MAX_CHARS else f"{date} {sender}: {text} ..."]
-        elif content_type == "image" and isinstance(message.media, MessageMediaPhoto):
-            os.makedirs("data/images", exist_ok=True)
-            path = await message.download_media(file="data/images/")
-            file_name = os.path.basename(path)
-            name, ext = os.path.splitext(file_name)
-            if not ext:
-                new_path = f"{path}.jpg"
-                os.rename(path, new_path)
-                file_name = os.path.basename(new_path)
-            return [f"{date} {sender}: {file_name}"]
-        elif content_type == "video" and isinstance(message.media, MessageMediaDocument) and message.media.document.mime_type.startswith('video'):
-            os.makedirs("data/videos", exist_ok=True)
-            path = await message.download_media(file="data/videos/")
-            file_name = os.path.basename(path)
-            name, ext = os.path.splitext(file_name)
-            if not ext:
-                new_path = f"{path}.mp4"
-                os.rename(path, new_path)
-                file_name = os.path.basename(new_path)
-            return [f"{date} {sender}: {file_name}"]
-        return []
-    except AttributeError as e:
-        print(f"Error extracting content: {e}")
-        return []
-
-
 # Function to fetch and extract content from specified chat
 async def fetch_content_from_chat(client):
     try:
@@ -123,47 +74,53 @@ async def fetch_content_from_chat(client):
         print(f"An error occurred: {e}")
 
 
-# Context manager for managing session
-@asynccontextmanager
-async def manage_session(client, phone_number):
+# Function to validate content type
+def validate_content_type(input_type):
+    valid_types = {
+        "l": "link",
+        "t": "text",
+        "i": "image",
+        "v": "video"
+    }
+    return valid_types.get(input_type.lower())
+
+
+# Support function to extract specified content from message text
+async def extract_content(message, content_type):
     try:
-        await asyncio.to_thread(delete_session_files)
-        await client.start(phone=phone_number)
-        yield
-    finally:
-        await client.disconnect()
-        await asyncio.to_thread(delete_session_files, cleanup=True)
-
-
-# Function to delete session files
-def delete_session_files(cleanup=False):
-    for session_file in glob.glob('*.session'):
-        try:
-            os.remove(session_file)
-            if cleanup:
-                print(f"Cleaned up session file: {session_file}")
-        except PermissionError:
-            print(f"Permission denied when trying to delete {session_file}")
-
-
-# Function to retry with exponential backoff
-async def retry_with_backoff(func, max_retries=5, initial_delay=1):
-    for retries in range(max_retries):
-        try:
-            return await func()
-        except (FloodWaitError, Exception) as e:
-            if isinstance(e, FloodWaitError):
-                wait_time = e.seconds
-            elif "A wait of" in str(e):
-                wait_time = int(str(e).split()[4])
-            else:
-                wait_time = initial_delay * (2 ** retries)
-                print(f"An error occurred: {e}")
-
-            ready_time = datetime.now() + timedelta(seconds=wait_time)
-            print(f"{'Rate limited' if isinstance(e, FloodWaitError) else 'Error'}: Ready at {ready_time.strftime('%H:%M')} (in {timedelta(seconds=wait_time)})")
-            await asyncio.sleep(wait_time)
-    raise Exception("Max retries reached")
+        date = message.date.strftime("[%y%m%d]")
+        sender = message.sender.first_name if message.sender else "Unknown"
+        
+        if content_type == "link" and message.text:
+            links = re.findall(r'(https?://[^\s]+)', message.text)
+            return [f"{date} {sender}: {link}" for link in links]
+        elif content_type == "text" and message.text:
+            text = message.text[:MAX_CHARS]
+            return [f"{date} {sender}: {text}" if len(message.text) <= MAX_CHARS else f"{date} {sender}: {text} ..."]
+        elif content_type == "image" and isinstance(message.media, MessageMediaPhoto):
+            os.makedirs("data/images", exist_ok=True)
+            path = await message.download_media(file="data/images/")
+            file_name = os.path.basename(path)
+            name, ext = os.path.splitext(file_name)
+            if not ext:
+                new_path = f"{path}.jpg"
+                os.rename(path, new_path)
+                file_name = os.path.basename(new_path)
+            return [f"{date} {sender}: {file_name}"]
+        elif content_type == "video" and isinstance(message.media, MessageMediaDocument) and message.media.document.mime_type.startswith('video'):
+            os.makedirs("data/videos", exist_ok=True)
+            path = await message.download_media(file="data/videos/")
+            file_name = os.path.basename(path)
+            name, ext = os.path.splitext(file_name)
+            if not ext:
+                new_path = f"{path}.mp4"
+                os.rename(path, new_path)
+                file_name = os.path.basename(new_path)
+            return [f"{date} {sender}: {file_name}"]
+        return []
+    except AttributeError as e:
+        print(f"Error extracting content: {e}")
+        return []
 
 
 # Function to list chats with unread messages
@@ -184,7 +141,7 @@ async def list_unread_chats(client):
         else:
             print("No non-archived chats with unread messages.")
 
-        # Optionally, you can list archived chats with unread messages
+        # Archived chats with unread messages ...
         # archived_dialogs = await client.get_dialogs(archived=True)
         # archived_unread = [(d.name, d.unread_count) for d in archived_dialogs if d.unread_count > 0]
         # if archived_unread:
@@ -241,6 +198,47 @@ async def search_messages(client):
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
+
+# Context manager for managing session
+@asynccontextmanager
+async def manage_session(client, phone_number):
+    try:
+        await asyncio.to_thread(delete_session_files)
+        await client.start(phone=phone_number)
+        yield
+    finally:
+        await client.disconnect()
+        await asyncio.to_thread(delete_session_files, cleanup=True)
+
+# Function to delete session files
+def delete_session_files(cleanup=False):
+    for session_file in glob.glob('*.session'):
+        try:
+            os.remove(session_file)
+            if cleanup:
+                print(f"Cleaned up session file: {session_file}")
+        except PermissionError:
+            print(f"Permission denied when trying to delete {session_file}")
+
+# Function to retry with exponential backoff
+async def retry_with_backoff(func, max_retries=5, initial_delay=1):
+    for retries in range(max_retries):
+        try:
+            return await func()
+        except (FloodWaitError, Exception) as e:
+            if isinstance(e, FloodWaitError):
+                wait_time = e.seconds
+            elif "A wait of" in str(e):
+                wait_time = int(str(e).split()[4])
+            else:
+                wait_time = initial_delay * (2 ** retries)
+                print(f"An error occurred: {e}")
+
+            ready_time = datetime.now() + timedelta(seconds=wait_time)
+            print(f"{'Rate limited' if isinstance(e, FloodWaitError) else 'Error'}: Ready at {ready_time.strftime('%H:%M')} (in {timedelta(seconds=wait_time)})")
+            await asyncio.sleep(wait_time)
+    raise Exception("Max retries reached")
 
 
 # Main function to run the program
